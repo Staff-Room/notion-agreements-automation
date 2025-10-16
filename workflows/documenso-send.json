@@ -1,0 +1,252 @@
+{
+  "name": "Documenso Send Agreement",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agreements/send",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "d8f5c2a1-8b9d-4f6e-a3c2-1d8e9f0a5b4c",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    },
+    {
+      "parameters": {
+        "url": "https://api.notion.com/v1/pages/={{ $json.agreement_url.split('/').pop() }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.NOTION_TOKEN }}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e9f6d3b2-9c0e-5f7a-b4d3-2e9f0a6b5c8d",
+      "name": "Fetch Agreement",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.notion.com/v1/pages/{{ $json.properties.Contact.relation[0].id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.NOTION_TOKEN }}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f0a7e4c3-ad1f-6081-c5e4-3f0a1b7c6d9e",
+      "name": "Fetch Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.DOCUMENSO_API_URL }}/api/documents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.DOCUMENSO_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "={{ $('Fetch Agreement').item.json.properties['Agreement Name'].title[0].text.content }} - Signature Required"
+            },
+            {
+              "name": "templateId",
+              "value": "={{ $env.DOCUMENSO_TEMPLATE_ID }}"
+            },
+            {
+              "name": "recipients",
+              "value": "=[{\"email\": \"{{ $('Fetch Contact').item.json.properties.Email.email }}\", \"name\": \"{{ $('Fetch Contact').item.json.properties.Name.title[0].text.content }}\", \"role\": \"SIGNER\"}]"
+            },
+            {
+              "name": "meta",
+              "value": "={\"company_name\": \"{{ $('Fetch Agreement').item.json.properties.Company.relation[0] ? 'Company Name' : 'N/A' }}\", \"amount\": \"{{ $('Fetch Agreement').item.json.properties.Amount.number }}\", \"currency\": \"{{ $('Fetch Agreement').item.json.properties.Currency.select.name }}\"}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b8f5d4-be2f-7192-d6f5-401b8c7d0a2f",
+      "name": "Create Documenso Envelope",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.notion.com/v1/pages/{{ $('Fetch Agreement').item.json.id }}",
+        "httpMethod": "PATCH",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.NOTION_TOKEN }}"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "properties",
+              "value": "={\"Status\": {\"status\": {\"name\": \"Negotiating\"}}, \"Envelope ID\": {\"rich_text\": [{\"text\": {\"content\": \"{{ $json.id }}\"}}]}, \"Signing URL\": {\"url\": \"{{ $json.signingUrl }}\"}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2c9g6e5-cf30-8203-e7g6-502c9d8e1b30",
+      "name": "Update Notion Agreement",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"envelope_id\": \"{{ $('Create Documenso Envelope').item.json.id }}\", \"signing_url\": \"{{ $('Create Documenso Envelope').item.json.signingUrl }}\", \"status\": \"Envelope created and agreement updated\"}"
+      },
+      "id": "c3d0h7f6-d041-9314-f8h7-603d0e9f2c41",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 400,
+        "responseBody": "={\"success\": false, \"error\": \"{{ $json.error || 'Unknown error occurred' }}\", \"message\": \"Failed to process agreement\"}"
+      },
+      "id": "d4e1i8g7-e152-a425-g9i8-704e1f0g3d52",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 500]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Fetch Agreement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Agreement": {
+      "main": [
+        [
+          {
+            "node": "Fetch Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Contact": {
+      "main": [
+        [
+          {
+            "node": "Create Documenso Envelope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Documenso Envelope": {
+      "main": [
+        [
+          {
+            "node": "Update Notion Agreement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Notion Agreement": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["documenso", "notion", "agreements"],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-16T17:00:00.000Z",
+  "versionId": "1"
+}
