@@ -1,0 +1,328 @@
+{
+  "name": "Documenso Send Agreement (Updated)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agreements/send",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "agreements-send-webhook"
+    },
+    {
+      "parameters": {
+        "pageId": "={{ $json.agreement_url.split('/').pop() }}"
+      },
+      "id": "notion-page-get",
+      "name": "Get Agreement Page",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-credentials",
+          "name": "Notion API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "blockId": "={{ $json.id }}",
+        "returnAll": true
+      },
+      "id": "notion-blocks-get",
+      "name": "Get Page Blocks",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-credentials", 
+          "name": "Notion API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Convert Notion blocks to HTML\nconst blocks = $input.all();\nlet html = `\n<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"utf-8\">\n    <title>Agreement Document</title>\n    <style>\n        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 20px; }\n        h1 { font-size: 2em; margin-bottom: 0.5em; }\n        h2 { font-size: 1.5em; margin-top: 1.5em; margin-bottom: 0.5em; }\n        h3 { font-size: 1.25em; margin-top: 1.25em; margin-bottom: 0.5em; }\n        p { margin-bottom: 1em; line-height: 1.6; }\n        ul, ol { margin-bottom: 1em; padding-left: 2em; }\n        li { margin-bottom: 0.5em; }\n        .signature-line { border-bottom: 1px solid #000; width: 200px; margin: 40px 0 10px 0; }\n        .signature-label { font-size: 0.9em; color: #666; }\n    </style>\n</head>\n<body>\n`;\n\nfunction convertRichText(richTextArray) {\n    if (!richTextArray) return '';\n    return richTextArray.map(text => {\n        let content = text.plain_text || '';\n        if (text.annotations?.bold) content = `<strong>${content}</strong>`;\n        if (text.annotations?.italic) content = `<em>${content}</em>`;\n        if (text.annotations?.underline) content = `<u>${content}</u>`;\n        if (text.href) content = `<a href=\"${text.href}\">${content}</a>`;\n        return content;\n    }).join('');\n}\n\nfor (const block of blocks) {\n    switch (block.type) {\n        case 'heading_1':\n            html += `<h1>${convertRichText(block.heading_1?.rich_text)}</h1>\\n`;\n            break;\n        case 'heading_2':\n            html += `<h2>${convertRichText(block.heading_2?.rich_text)}</h2>\\n`;\n            break;\n        case 'heading_3':\n            html += `<h3>${convertRichText(block.heading_3?.rich_text)}</h3>\\n`;\n            break;\n        case 'paragraph':\n            html += `<p>${convertRichText(block.paragraph?.rich_text)}</p>\\n`;\n            break;\n        case 'bulleted_list_item':\n            html += `<ul><li>${convertRichText(block.bulleted_list_item?.rich_text)}</li></ul>\\n`;\n            break;\n        case 'numbered_list_item':\n            html += `<ol><li>${convertRichText(block.numbered_list_item?.rich_text)}</li></ol>\\n`;\n            break;\n        case 'divider':\n            html += `<hr/>\\n`;\n            break;\n    }\n}\n\n// Add signature section\nhtml += `\n<div style=\"margin-top: 60px;\">\n    <h3>Signatures</h3>\n    <div style=\"margin-top: 40px;\">\n        <div class=\"signature-line\"></div>\n        <div class=\"signature-label\">Signature</div>\n    </div>\n    <div style=\"margin-top: 30px;\">\n        <div class=\"signature-line\"></div>\n        <div class=\"signature-label\">Date</div>\n    </div>\n</div>\n</body>\n</html>\n`;\n\nreturn { html };"
+      },
+      "id": "convert-to-html",
+      "name": "Convert Blocks to HTML",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://v2.api2pdf.com/chrome/pdf/html",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "{{ $env.API2PDF_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "html",
+              "value": "={{ $json.html }}"
+            },
+            {
+              "name": "inline",
+              "value": false
+            },
+            {
+              "name": "filename",
+              "value": "={{ $('Get Agreement Page').item.json.properties['Agreement Name'].title[0].text.content }}-agreement.pdf"
+            },
+            {
+              "name": "options",
+              "value": "={\"landscape\": false, \"format\": \"Letter\", \"margin\": {\"top\": \"0.5in\", \"bottom\": \"0.5in\", \"left\": \"0.5in\", \"right\": \"0.5in\"}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "html-to-pdf",
+      "name": "Generate PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://app.documenso.com/api/v1/documents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.DOCUMENSO_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "title",
+              "value": "={{ $('Get Agreement Page').item.json.properties['Agreement Name'].title[0].text.content }} - Signature Required"
+            },
+            {
+              "name": "recipients",
+              "value": "=[{\"name\": \"{{ $('Get Agreement Page').item.json.properties.Contact.relation[0] ? 'Contact Name' : 'Unknown' }}\", \"email\": \"contact@example.com\", \"role\": \"SIGNER\", \"signingOrder\": 0}]"
+            },
+            {
+              "name": "meta",
+              "value": "={\"subject\": \"Please sign: {{ $('Get Agreement Page').item.json.properties['Agreement Name'].title[0].text.content }}\", \"message\": \"Your agreement is ready for signature. Please review and sign.\", \"signingOrder\": \"SEQUENTIAL\"}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-documenso-doc",
+      "name": "Create Documenso Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.uploadUrl }}",
+        "httpMethod": "PUT",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/pdf"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "options": {}
+      },
+      "id": "upload-pdf",
+      "name": "Upload PDF to S3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "pageId": "={{ $('Get Agreement Page').item.json.id }}",
+        "simple": false,
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Status",
+              "type": "status",
+              "status": "Negotiating"
+            },
+            {
+              "key": "Envelope ID", 
+              "type": "richText",
+              "richText": "={{ $('Create Documenso Document').item.json.documentId }}"
+            },
+            {
+              "key": "Signing URL",
+              "type": "url", 
+              "url": "={{ $('Create Documenso Document').item.json.recipients[0].signingUrl }}"
+            }
+          ]
+        }
+      },
+      "id": "update-notion-agreement",
+      "name": "Update Agreement Status",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2,
+      "position": [1780, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "notion-credentials",
+          "name": "Notion API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"envelope_id\": \"{{ $('Create Documenso Document').item.json.documentId }}\", \"signing_url\": \"{{ $('Create Documenso Document').item.json.recipients[0].signingUrl }}\", \"status\": \"Document created and sent for signature\"}"
+      },
+      "id": "success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 400,
+        "responseBody": "={\"success\": false, \"error\": \"{{ $json.error || 'Unknown error occurred' }}\", \"message\": \"Failed to process agreement\"}"
+      },
+      "id": "error-response",
+      "name": "Error Response", 
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Agreement Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Agreement Page": {
+      "main": [
+        [
+          {
+            "node": "Get Page Blocks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Page Blocks": {
+      "main": [
+        [
+          {
+            "node": "Convert Blocks to HTML",
+            "type": "main", 
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Blocks to HTML": {
+      "main": [
+        [
+          {
+            "node": "Generate PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate PDF": {
+      "main": [
+        [
+          {
+            "node": "Create Documenso Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Documenso Document": {
+      "main": [
+        [
+          {
+            "node": "Upload PDF to S3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload PDF to S3": {
+      "main": [
+        [
+          {
+            "node": "Update Agreement Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Agreement Status": {
+      "main": [
+        [
+          {
+            "node": "Success Response", 
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": ["documenso", "notion", "agreements", "pdf"],
+  "triggerCount": 1,
+  "updatedAt": "2025-10-16T18:00:00.000Z",
+  "versionId": "2"
+}
